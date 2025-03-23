@@ -1,9 +1,8 @@
 {
 	"required": true,
-	"package": "com.jomlom.nearbycrafting.mixin",
+	"package": "com.jomlom.nearbycrafting.mixin.client",
 	"compatibilityLevel": "JAVA_21",
-	"mixins": [
-		"ExampleMixin"
+	"client": [
 	],
 	"injectors": {
 		"defaultRequire": 1
