@@ -6,26 +6,20 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.block.*;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.block.entity.BlockEntityType;
-import net.minecraft.command.argument.IdentifierArgumentType;
-import net.minecraft.command.permission.Permission;
-import net.minecraft.command.permission.PermissionLevel;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.registry.Registries;
-import net.minecraft.server.command.CommandManager;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.IdentifierArgument;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.permissions.Permission;
+import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.mojang.brigadier.context.CommandContext;
-import net.minecraft.server.command.ServerCommandSource;
-
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map;
 
 
 public class NearbyCrafting implements ModInitializer {
@@ -38,61 +32,60 @@ public class NearbyCrafting implements ModInitializer {
 	public void onInitialize() {
 		NearbyCraftingConfig.HANDLER.load();
 		InitializeCommands();
-		DetectContainerBlocks();
 	}
 
 	private void InitializeCommands() {
 		CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-			dispatcher.register(CommandManager.literal("nearbycrafting")
+			dispatcher.register(Commands.literal("nearbycrafting")
 
 					// Operator permission
-					.requires(source -> source.getPermissions().hasPermission(new Permission.Level(PermissionLevel.GAMEMASTERS)))
+					.requires(source -> source.permissions().hasPermission(new Permission.HasCommandLevel(PermissionLevel.GAMEMASTERS)))
 
 					// Crafting Table subcommand
-					.then(CommandManager.literal("craftingTable")
-							.then(CommandManager.literal("enable")
+					.then(Commands.literal("craftingTable")
+							.then(Commands.literal("enable")
 									.executes(context -> setCraftingTableEnabled(context, true)))
-							.then(CommandManager.literal("disable")
+							.then(Commands.literal("disable")
 									.executes(context -> setCraftingTableEnabled(context, false)))
-							.then(CommandManager.literal("setReach")
-									.then(CommandManager.argument("radius", IntegerArgumentType.integer(0, 50))
+							.then(Commands.literal("setReach")
+									.then(Commands.argument("radius", IntegerArgumentType.integer(0, 50))
 											.executes(context -> setCraftingTableReach(context, IntegerArgumentType.getInteger(context, "radius")))))
-							.then(CommandManager.literal("getReach")
+							.then(Commands.literal("getReach")
 									.executes(NearbyCrafting::getCraftingTableReach))
 					)
 
 					// Player Inventory Crafting subcommand
-					.then(CommandManager.literal("playerInventoryCrafting")
-							.then(CommandManager.literal("enable")
+					.then(Commands.literal("playerInventoryCrafting")
+							.then(Commands.literal("enable")
 									.executes(context -> setPlayerInventoryEnabled(context, true)))
-							.then(CommandManager.literal("disable")
+							.then(Commands.literal("disable")
 									.executes(context -> setPlayerInventoryEnabled(context, false)))
-							.then(CommandManager.literal("setReach")
-									.then(CommandManager.argument("radius", IntegerArgumentType.integer(0, 50))
+							.then(Commands.literal("setReach")
+									.then(Commands.argument("radius", IntegerArgumentType.integer(0, 50))
 											.executes(context -> setPlayerInventoryReach(context, IntegerArgumentType.getInteger(context, "radius")))))
-							.then(CommandManager.literal("getReach")
+							.then(Commands.literal("getReach")
 									.executes(NearbyCrafting::getPlayerInventoryReach))
 					)
 
 					// CONTAINERS subcommand for toggling blocks accessibility individually
-					.then(CommandManager.literal("CONTAINERS")
+					.then(Commands.literal("CONTAINERS")
 
-							.then(CommandManager.literal("enable")
-									.then(CommandManager.argument("block", IdentifierArgumentType.identifier())
+							.then(Commands.literal("enable")
+									.then(Commands.argument("block", IdentifierArgument.id())
 											.suggests(ContainerBlockSuggestionProvider.SUGGEST_CONTAINER_BLOCKS)
 											.executes(context -> setContainerBlockEnabled(context, true))))
 
-							.then(CommandManager.literal("disable")
-									.then(CommandManager.argument("block", IdentifierArgumentType.identifier())
+							.then(Commands.literal("disable")
+									.then(Commands.argument("block", IdentifierArgument.id())
 											.suggests(ContainerBlockSuggestionProvider.SUGGEST_CONTAINER_BLOCKS)
 											.executes(context -> setContainerBlockEnabled(context, false))))
 
-							.then(CommandManager.literal("get")
-									.then(CommandManager.argument("block", IdentifierArgumentType.identifier())
+							.then(Commands.literal("get")
+									.then(Commands.argument("block", IdentifierArgument.id())
 											.suggests(ContainerBlockSuggestionProvider.SUGGEST_CONTAINER_BLOCKS)
 											.executes(this::getContainerBlockStatus)))
 
-							.then(CommandManager.literal("list")
+							.then(Commands.literal("list")
 									.executes(this::listContainerBlocks))
 					)
 			);
@@ -100,8 +93,8 @@ public class NearbyCrafting implements ModInitializer {
 	}
 
 	public static class ContainerBlockSuggestionProvider {
-		public static final SuggestionProvider<ServerCommandSource> SUGGEST_CONTAINER_BLOCKS = (context, builder) -> {
-			for (Identifier blockId : Registries.BLOCK.getIds()) {
+		public static final SuggestionProvider<CommandSourceStack> SUGGEST_CONTAINER_BLOCKS = (context, builder) -> {
+			for (Identifier blockId : BuiltInRegistries.BLOCK.keySet()) {
 				if (NearbyCraftingConfig.containerBlockToggles
 						.getOrDefault(blockId.getNamespace(), Collections.emptyMap())
 						.containsKey(blockId.toString())) {
@@ -112,17 +105,17 @@ public class NearbyCrafting implements ModInitializer {
 		};
 	}
 
-	private int setContainerBlockEnabled(CommandContext<ServerCommandSource> context, boolean enabled) throws CommandSyntaxException {
-		Identifier blockId = IdentifierArgumentType.getIdentifier(context, "block");
+	private int setContainerBlockEnabled(CommandContext<CommandSourceStack> context, boolean enabled) throws CommandSyntaxException {
+		Identifier blockId = IdentifierArgument.getId(context, "block");
 
 		setBlockEnabled(blockId, enabled);
 
-		context.getSource().sendFeedback(() ->
-				Text.literal("Container block " + blockId + " set to " + (enabled ? "enabled" : "disabled")), true);
+		context.getSource().sendSuccess(() ->
+				Component.literal("Container block " + blockId + " set to " + (enabled ? "enabled" : "disabled")), true);
 		return 1;
 	}
 
-	private int listContainerBlocks(CommandContext<ServerCommandSource> context) {
+	private int listContainerBlocks(CommandContext<CommandSourceStack> context) {
 		StringBuilder sb = new StringBuilder("Container blocks and their enabled states:\n");
 
 		NearbyCraftingConfig.containerBlockToggles.forEach((namespace, map) -> {
@@ -131,74 +124,29 @@ public class NearbyCrafting implements ModInitializer {
 			});
 		});
 
-		context.getSource().sendFeedback(() ->
-				Text.literal(sb.toString()), false);
+		context.getSource().sendSuccess(() ->
+				Component.literal(sb.toString()), false);
 		return 1;
 	}
 
-	private void DetectContainerBlocks() {
-		Map<String, Map<Identifier, Boolean>> containerBlocks = new HashMap<>();
+	public static boolean isContainerEnabled(BlockEntity blockEntity) {
+		Identifier blockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
+		String namespace = blockId.getNamespace();
+		String id = blockId.toString();
 
-		for (BlockEntityType<?> beType : Registries.BLOCK_ENTITY_TYPE) {
-			Identifier beId = Registries.BLOCK_ENTITY_TYPE.getId(beType);
-			if (beId == null) continue;
-
-			BlockState validState = null;
-
-			for (Block block : Registries.BLOCK) {
-				if (block instanceof BlockWithEntity blockWE) {
-					BlockEntity be = null;
-					try {
-						be = blockWE.createBlockEntity(BlockPos.ORIGIN, block.getDefaultState());
-					} catch (Exception ignored) {}
-
-					if (be != null && be.getType() == beType) {
-						validState = block.getDefaultState();
-						break;
-					}
-				}
-			}
-
-			if (validState == null) {
-				continue;
-			}
-
-			BlockEntity blockEntity;
-			try {
-				blockEntity = beType.instantiate(BlockPos.ORIGIN, validState);
-			} catch (Exception e) {
-				continue;
-			}
-
-			if (!(blockEntity instanceof Inventory)) continue;
-
-			for (Block block : Registries.BLOCK) {
-				if (block instanceof BlockWithEntity blockWE) {
-					BlockEntity be = null;
-					try {
-						be = blockWE.createBlockEntity(BlockPos.ORIGIN, block.getDefaultState());
-					} catch (Exception ignored) {}
-
-					if (be != null && be.getType() == beType) {
-						Identifier blockId = Registries.BLOCK.getId(block);
-
-                        String namespace = blockId.getNamespace();
-						containerBlocks.putIfAbsent(namespace, new HashMap<>());
-						Map<Identifier, Boolean> blocks = containerBlocks.get(namespace);
-
-						String blockIdStr = blockId.toString();
-						NearbyCraftingConfig.containerBlockToggles.putIfAbsent(namespace, new HashMap<>());
-						NearbyCraftingConfig.containerBlockToggles.get(namespace).putIfAbsent(blockIdStr, true);
-
-						blocks.putIfAbsent(blockId, NearbyCraftingConfig.containerBlockToggles.get(namespace).get(blockIdStr));
-					}
-				}
-			}
+		var namespaceToggles = NearbyCraftingConfig.containerBlockToggles
+				.computeIfAbsent(namespace, ignored -> new HashMap<>());
+		boolean discovered = !namespaceToggles.containsKey(id);
+		namespaceToggles.putIfAbsent(id, true);
+		if (discovered) {
+			NearbyCraftingConfig.HANDLER.save();
 		}
+
+		return namespaceToggles.get(id);
 	}
 
-	private int getContainerBlockStatus(CommandContext<ServerCommandSource> context) throws CommandSyntaxException {
-		Identifier blockId = IdentifierArgumentType.getIdentifier(context, "block");
+	private int getContainerBlockStatus(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
+		Identifier blockId = IdentifierArgument.getId(context, "block");
 		String ns = blockId.getNamespace();
 		String id = blockId.toString();
 
@@ -206,8 +154,8 @@ public class NearbyCrafting implements ModInitializer {
 				.getOrDefault(ns, Collections.emptyMap())
 				.getOrDefault(id, true);
 
-		context.getSource().sendFeedback(() ->
-				Text.literal("Container block " + blockId + " is " + (enabled ? "enabled" : "disabled")), false);
+		context.getSource().sendSuccess(() ->
+				Component.literal("Container block " + blockId + " is " + (enabled ? "enabled" : "disabled")), false);
 
 		return 1;
 	}
@@ -221,49 +169,49 @@ public class NearbyCrafting implements ModInitializer {
 		NearbyCraftingConfig.HANDLER.save();
 	}
 
-	private static int setCraftingTableEnabled(CommandContext<ServerCommandSource> context, boolean enabled) {
+	private static int setCraftingTableEnabled(CommandContext<CommandSourceStack> context, boolean enabled) {
 		NearbyCraftingConfig.craftingTableCanReach = enabled;
 		NearbyCraftingConfig.HANDLER.save();
-		context.getSource().sendFeedback(() ->
-				Text.of("Crafting Table reach enabled: " + enabled), true);
+		context.getSource().sendSuccess(() ->
+				Component.nullToEmpty("Crafting Table reach enabled: " + enabled), true);
 		return 1;
 	}
 
-	private static int setCraftingTableReach(CommandContext<ServerCommandSource> context, int radius) {
+	private static int setCraftingTableReach(CommandContext<CommandSourceStack> context, int radius) {
 		NearbyCraftingConfig.craftingTableReach = radius;
 		NearbyCraftingConfig.HANDLER.save();
-		context.getSource().sendFeedback(() ->
-				Text.of("Crafting Table reach radius set to: " + radius), true);
+		context.getSource().sendSuccess(() ->
+				Component.nullToEmpty("Crafting Table reach radius set to: " + radius), true);
 		return 1;
 	}
 
-	private static int getCraftingTableReach(CommandContext<ServerCommandSource> context) {
+	private static int getCraftingTableReach(CommandContext<CommandSourceStack> context) {
 		int radius = NearbyCraftingConfig.craftingTableReach;
-		context.getSource().sendFeedback(() ->
-				Text.of("Crafting Table reach radius: " + radius), false);
+		context.getSource().sendSuccess(() ->
+				Component.nullToEmpty("Crafting Table reach radius: " + radius), false);
 		return 1;
 	}
 
-	private static int setPlayerInventoryEnabled(CommandContext<ServerCommandSource> context, boolean enabled) {
+	private static int setPlayerInventoryEnabled(CommandContext<CommandSourceStack> context, boolean enabled) {
 		NearbyCraftingConfig.craftingPlayerCanReach = enabled;
 		NearbyCraftingConfig.HANDLER.save();
-		context.getSource().sendFeedback(() ->
-				Text.of("Player Inventory Crafting reach enabled: " + enabled), true);
+		context.getSource().sendSuccess(() ->
+				Component.nullToEmpty("Player Inventory Crafting reach enabled: " + enabled), true);
 		return 1;
 	}
 
-	private static int setPlayerInventoryReach(CommandContext<ServerCommandSource> context, int radius) {
+	private static int setPlayerInventoryReach(CommandContext<CommandSourceStack> context, int radius) {
 		NearbyCraftingConfig.craftingPlayerReach = radius;
 		NearbyCraftingConfig.HANDLER.save();
-		context.getSource().sendFeedback(() ->
-				Text.of("Player Inventory Crafting reach radius set to: " + radius), true);
+		context.getSource().sendSuccess(() ->
+				Component.nullToEmpty("Player Inventory Crafting reach radius set to: " + radius), true);
 		return 1;
 	}
 
-	private static int getPlayerInventoryReach(CommandContext<ServerCommandSource> context) {
+	private static int getPlayerInventoryReach(CommandContext<CommandSourceStack> context) {
 		int radius = NearbyCraftingConfig.craftingPlayerReach;
-		context.getSource().sendFeedback(() ->
-				Text.of("Player Inventory Crafting reach radius: " + radius), false);
+		context.getSource().sendSuccess(() ->
+				Component.nullToEmpty("Player Inventory Crafting reach radius: " + radius), false);
 		return 1;
 	}
 }

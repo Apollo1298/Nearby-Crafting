@@ -24,6 +24,10 @@ bin/
 .classpath
 .project
 
+# cursor
+
+.cursor/
+
 # macos
 
 *.DS_Store

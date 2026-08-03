@@ -6,8 +6,7 @@ import dev.isxander.yacl3.config.v2.api.ConfigClassHandler;
 import dev.isxander.yacl3.config.v2.api.SerialEntry;
 import dev.isxander.yacl3.config.v2.api.serializer.GsonConfigSerializerBuilder;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.util.Identifier;
-
+import net.minecraft.resources.Identifier;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,7 +14,7 @@ public class NearbyCraftingConfig {
 
     public static final ConfigClassHandler<NearbyCraftingConfig> HANDLER =
             ConfigClassHandler.createBuilder(NearbyCraftingConfig.class)
-                    .id(Identifier.of(NearbyCrafting.MOD_ID, "config"))
+                    .id(Identifier.fromNamespaceAndPath(NearbyCrafting.MOD_ID, "config"))
                     .serializer(config -> GsonConfigSerializerBuilder.create(config)
                             .setPath(FabricLoader.getInstance().getConfigDir().resolve("nearby_crafting_config.json5"))
                             .appendGsonBuilder(GsonBuilder::setPrettyPrinting)
